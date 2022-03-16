@@ -1,4 +1,3 @@
-
 from pandas import read_csv
 from pandas._config.config import option_context
 from pandas.core.frame import DataFrame
@@ -16,6 +15,7 @@ from sklearn.metrics._classification import confusion_matrix, \
 from catboost.core import CatBoostClassifier
 from lightgbm.sklearn import LGBMClassifier
 from xgboost.sklearn import XGBClassifier
+from autogluon.tabular import TabularPredictor, TabularDataset
 
 data = read_csv("../input/spaceship-titanic-train.csv")
 data = data.sample(frac=1).reset_index(drop=True)
@@ -23,32 +23,58 @@ data = data.sample(frac=1).reset_index(drop=True)
 X = data.drop(labels=['Transported'], axis='columns')
 Y = data['Transported'].astype(bool)
 
-pass1 = SpaceshipTitanicPreprocessing()
-
+pass1 = SpaceshipTitanicPreprocessing(fill_missing=False, fill_group=False)
+'''
 pass2 = ColumnTransformer(transformers=[
-    ('one_hot_enco', OneHotEncoder(), make_column_selector(dtype_include="category")),
-    ('scale', MinMaxScaler(), make_column_selector(dtype_exclude="category"))])
-
+    ('one_hot_enco', OneHotEncoder(), make_column_selector(dtype_include='category')),
+    ('scale', MinMaxScaler(), make_column_selector(dtype_include=['float64', 'int64']))],
+    remainder='passthrough')
+'''
+'''
 preprocessing = Pipeline([('feature_eng', pass1), ('encode_scale', pass2)])
 
-model = XGBClassifier(use_label_encoder=False, n_estimators=10000)
+model = XGBClassifier(use_label_encoder=False, n_estimators=100)
 
 pipe = Pipeline([
-        ('preprocessing', preprocessing),
-        ("reduce_dim", "passthrough"),
-        ("classifier", model),
-    ])
+    ('preprocessing', preprocessing),
+    ("reduce_dim", "passthrough"),
+    ("classifier", model),
+])
+'''
 
-time_limit = 60  # for quick demonstration only, you should set this to longest time you are willing to wait (in seconds)
-metric = 'roc_auc'  # specify your evaluation metric here
-predictor = TabularPredictor(label, eval_metric=metric).fit(train_data, time_limit=time_limit, presets='best_quality')
-predictor.leaderboard(test_data, silent=True)
+# for quick demonstration only, you should set this to longest time you are willing to wait (in seconds)
 
-y_pred = cross_val_predict(pipe, X, Y, cv=10)
+data = pass1.fit_transform(data)
 
-print(confusion_matrix(Y, y_pred))
-print(classification_report(Y, y_pred))
-print("Accuracy: {:.4}%".format(100 * accuracy_score(Y, y_pred)))
+# print(data.dtypes)
+# features = list(data.columns)
+# print(features)
+# data = pass2.fit_transform(data)
+#
+# data = DataFrame(data, columns=pass2.get_feature_names_out(features))
+
+predictor = TabularPredictor(label='Transported', eval_metric='accuracy').fit(data, time_limit=10*60,
+                                                                               presets='best_quality')
+predictor.leaderboard(data, silent=True)
+
+
+'''
+
+Xt = pd.read_csv("../input/spaceship-titanic-test.csv")
+passid = Xt['PassengerId']
+model = grid.best_estimator_
+model.fit(X, Y)
+Yt = model.predict(Xt)
+
+result = pd.DataFrame({'PassengerId': passid, 'Transported':Yt})
+result.to_csv('../output/spaceship-titanic-result.csv', index=False)
+'''
+#
+# y_pred = cross_val_predict(pipe, X, Y, cv=10)
+#
+# print(confusion_matrix(Y, y_pred))
+# print(classification_report(Y, y_pred))
+# print("Accuracy: {:.4}%".format(100 * accuracy_score(Y, y_pred)))
 
 '''
 data = pass1.fit_transform(data)
