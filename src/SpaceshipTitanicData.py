@@ -1,177 +1,216 @@
-'''
+"""
 Created on 13 de mar. de 2022
 
 @author: Antonino
-'''
+"""
 
-from numpy import nan, int64
-from pandas import read_csv
+from numpy import nan
+from pandas import DataFrame
 from pandas.core.dtypes.missing import isna
 from pandas.core.reshape.merge import merge
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 
 
 class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
 
-    def __init__(self, fill_missing=True, fill_group=True):
+    def __init__(self,
+                 fill_missing=True,
+                 fill_total_spend=True,
+                 fill_percent_spend=True,
+                 fill_group=True,
+                 scaling=True,
+                 one_hot_encoding=True):
+
         self.fill_missing = fill_missing
         self.fill_group = fill_group
+        self.fill_percent_spend = fill_percent_spend
+        self.fill_total_spend = fill_total_spend
+        self.scaling = scaling
+        self.one_hot_encoding = one_hot_encoding
+        self.__cabin_deck_mode = None
+        self.__destination_mode = None
+        self.__home_planet_mode = None
+        self.__bool_features_mode_values = None
+        self.__cryo_grouped_median = None
+        self.__age_grouped_median = None
+        self.__group_data = None
+        self.__ohe_encoder = {'Destination': OneHotEncoder(), 'HomePlanet': OneHotEncoder()}
+        self.__scaling_encoder = {
+            'Age': MinMaxScaler(), 'CabinDeck': MinMaxScaler(), 'RoomService': MinMaxScaler(),
+            'FoodCourt': MinMaxScaler(), 'ShoppingMall': MinMaxScaler(), 'Spa': MinMaxScaler(),
+            'VRDeck': MinMaxScaler(), 'TotalSpend': MinMaxScaler()
+        }
+        if self.fill_group:
+            self.__scaling_encoder.update({
+                'GroupCount': MinMaxScaler(), 'GroupCountVIP': MinMaxScaler(), 'GroupCountCryoSleep': MinMaxScaler(),
+                'GroupCountCabin': MinMaxScaler(), 'GroupCountCabinDeck': MinMaxScaler(),
+                'GroupCountCabinNum': MinMaxScaler(), 'GroupCountCabinSide': MinMaxScaler(),
+                'GroupMedianAge': MinMaxScaler(), 'GroupMeanCountHomePlanet': MinMaxScaler(),
+                'GroupMeanCountDestination': MinMaxScaler(), 'GroupMedianRoomService': MinMaxScaler(),
+                'GroupMedianFoodCourt': MinMaxScaler(), 'GroupMedianShoppingMall': MinMaxScaler(),
+                'GroupMedianSpa': MinMaxScaler(), 'GroupMedianVRDeck': MinMaxScaler(),
+                'GroupMedianTotalSpend': MinMaxScaler()
+            })
+
+    def __drop_unused_features(self, x: DataFrame):
+        x.drop(labels=['PassengerId', 'PassengerGroup', 'PassengerNo', 'Cabin', 'CabinNum', 'Name'], axis='columns',
+               inplace=True)
+
+        if self.fill_group:
+            if not self.fill_percent_spend:
+                x.drop(labels=['GroupMeanPCT_RoomService', 'GroupMeanPCT_FoodCourt', 'GroupMeanPCT_ShoppingMall',
+                               'GroupMeanPCT_Spa', 'GroupMeanPCT_VRDeck'], axis='columns', inplace=True)
+            if not self.fill_total_spend:
+                x.drop(labels=['GroupMedianTotalSpend'], axis='columns', inplace=True)
+
+        if not self.fill_percent_spend:
+            x.drop(labels=['PCT_RoomService', 'PCT_FoodCourt', 'PCT_ShoppingMall', 'PCT_Spa', 'PCT_VRDeck'],
+                   axis='columns', inplace=True)
+        if not self.fill_total_spend:
+            x.drop(labels=['TotalSpend'], axis='columns', inplace=True)
+        if self.__ohe_encoder:
+            x.drop(labels=['HomePlanet', 'Destination'], axis='columns', inplace=True)
 
     def fit_transform(self, x, y=None, **fit_params):
-        return self.transform(x, y)
-
-    def transform(self, data, y=None):
-        data['CabinDeck'] = data['Cabin'].apply(lambda x: x.split('/')[0] if not isna(x) else nan)
-        data['CabinNum'] = data['Cabin'].apply(lambda x: x.split('/')[1] if not isna(x) else nan)
-        data['CabinSide'] = data['Cabin'].apply(lambda x: x.split('/')[2] == 'P' if not isna(x) else nan)
+        x['CabinDeck'] = x['Cabin'].apply(lambda v: v.split('/')[0] if not isna(v) else nan)
+        x['CabinNum'] = x['Cabin'].apply(lambda v: v.split('/')[1] if not isna(v) else nan)
+        x['CabinSide'] = x['Cabin'].apply(lambda v: v.split('/')[2] == 'P' if not isna(v) else nan)
 
         if self.fill_missing:
-            data['CabinDeck'].fillna(data['CabinDeck'].mode()[0], inplace=True)
-            data['HomePlanet'].fillna(data['HomePlanet'].mode()[0], inplace=True)
-            data['Destination'].fillna(data['Destination'].mode()[0], inplace=True)
+            self.__cabin_deck_mode = x['CabinDeck'].mode()[0]
+            self.__home_planet_mode = x['HomePlanet'].mode()[0]
+            self.__destination_mode = x['Destination'].mode()[0]
+            x['CabinDeck'].fillna(self.__cabin_deck_mode, inplace=True)
+            x['HomePlanet'].fillna(self.__home_planet_mode, inplace=True)
+            x['Destination'].fillna(self.__destination_mode, inplace=True)
 
-        data['HomePlanet'] = data['HomePlanet'].astype('category')
-        data['Destination'] = data['Destination'].astype('category')
+        x['HomePlanet'] = x['HomePlanet'].astype('category')
+        x['Destination'] = x['Destination'].astype('category')
 
-        data['CabinDeck'].replace({'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4, 'F': 5, 'G': 6, 'T': 7}, inplace=True)
-        #data['CabinDeck'] = data['CabinDeck'].astype(int64)
+        x['CabinDeck'].replace({'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4, 'F': 5, 'G': 6, 'T': 7}, inplace=True)
+        # data['CabinDeck'] = data['CabinDeck'].astype(int64)
 
         bool_features = ['VIP', 'CryoSleep', 'CabinSide']
-        mode_values = data[bool_features].mode(axis='columns')
-        data[bool_features] = data[bool_features].astype(bool)
         if self.fill_missing:
-            data[bool_features] = data[bool_features].fillna(mode_values)
+            self.__bool_features_mode_values = x[bool_features].mode(axis='columns')
+            x[bool_features] = x[bool_features].fillna(self.__bool_features_mode_values)
+            x[bool_features] = x[bool_features].astype(bool)
 
         spend_features = ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']
         if self.fill_missing:
-            data[spend_features] = data[spend_features].fillna(
-                data.groupby('CryoSleep')[spend_features].transform('median'))
+            self.__cryo_grouped_median = x.groupby('CryoSleep')[spend_features].transform('median')
+            x[spend_features] = x[spend_features].fillna(self.__cryo_grouped_median)
 
-        data['TotalSpend'] = data['RoomService'] + data['FoodCourt'] + data['ShoppingMall'] + data['Spa'] + data[
-            'VRDeck']
+        x['TotalSpend'] = x['RoomService'] + x['FoodCourt'] + x['ShoppingMall'] + x['Spa'] + x['VRDeck']
 
         pct_spend_features = ['PCT_RoomService', 'PCT_FoodCourt', 'PCT_ShoppingMall', 'PCT_Spa', 'PCT_VRDeck']
-        data[pct_spend_features] = data[spend_features].apply(lambda x: x / data['TotalSpend'])
+        x[pct_spend_features] = x[spend_features].apply(lambda v: v / x['TotalSpend'])
         if self.fill_missing:
-            data[pct_spend_features] = data[pct_spend_features].fillna(0)  # clear pct/0
+            x[pct_spend_features] = x[pct_spend_features].fillna(0)  # clear pct/0
 
         if self.fill_missing:
-            data['Age'] = data['Age'].fillna(data.groupby('HomePlanet')['Age'].transform('median'))
+            self.__age_grouped_median = x.groupby('HomePlanet')['Age'].transform('median')
+            x['Age'] = x['Age'].fillna(self.__age_grouped_median)
 
-        # The instances in the same group must be similar
-        data['PassengerGroup'] = data['PassengerId'].apply(lambda x: x.split('_')[0])
-        data['PassengerNo'] = data['PassengerId'].apply(lambda x: x.split('_')[1])
-        group_data = (data.groupby('PassengerGroup', as_index=False)
-            .agg({'PassengerNo': 'nunique',
-                  'VIP': lambda x: sum(x == True),
-                  'CryoSleep': lambda x: sum(x == True),
-                  'Cabin': 'nunique',
-                  'CabinDeck': 'nunique',
-                  'CabinNum': 'nunique',
-                  'CabinSide': 'nunique',
-                  'Age': 'median',
-                  'HomePlanet': 'nunique',
-                  'Destination': 'nunique',
-                  'RoomService': 'median',
-                  'FoodCourt': 'median',
-                  'ShoppingMall': 'median',
-                  'Spa': 'median',
-                  'VRDeck': 'median',
-                  'TotalSpend': 'median',
-                  'PCT_RoomService': 'mean',
-                  'PCT_FoodCourt': 'mean',
-                  'PCT_ShoppingMall': 'mean',
-                  'PCT_Spa': 'mean',
-                  'PCT_VRDeck': 'mean'
-                  })
-            .rename(columns={
-                'PassengerNo': 'GroupCount',
-                'VIP': 'GroupCountVIP',
-                'CryoSleep': 'GroupCountCryoSleep',
-                'Cabin': 'GroupCountCabin',
-                'CabinDeck': 'GroupCountCabinDeck',
-                'CabinNum': 'GroupCountCabinNum',
-                'CabinSide': 'GroupCountCabinSide',
-                'Age': 'GroupMedianAge',
-                'HomePlanet': 'GroupMeanCountHomePlanet',
-                'Destination': 'GroupMeanCountDestination',
-                'RoomService': 'GroupMedianRoomService',
-                'FoodCourt': 'GroupMedianFoodCourt',
-                'ShoppingMall': 'GroupMedianShoppingMall',
-                'Spa': 'GroupMedianSpa',
-                'VRDeck': 'GroupMedianVRDeck',
-                'TotalSpend': 'GroupMedianTotalSpend',
-                'PCT_RoomService': 'GroupMeanPCT_RoomService',
-                'PCT_FoodCourt': 'GroupMeanPCT_FoodCourt',
-                'PCT_ShoppingMall': 'GroupMeanPCT_ShoppingMall',
-                'PCT_Spa': 'GroupMeanPCT_Spa',
-                'PCT_VRDeck': 'GroupMeanPCT_VRDeck'
-            })
-        )
+        # Instances in the same group must be similar
+        x['PassengerGroup'] = x['PassengerId'].apply(lambda v: v.split('_')[0])
+        x['PassengerNo'] = x['PassengerId'].apply(lambda v: v.split('_')[1])
+        self.__group_data = (x.groupby('PassengerGroup', as_index=False).agg({
+            'PassengerNo': 'nunique',
+            'VIP': lambda v: sum(v == True), 'CryoSleep': lambda v: sum(v == True),
+            'Cabin': 'nunique', 'CabinDeck': 'nunique', 'CabinNum': 'nunique', 'CabinSide': 'nunique',
+            'HomePlanet': 'nunique', 'Destination': 'nunique', 'Age': 'median', 'RoomService': 'median',
+            'FoodCourt': 'median', 'ShoppingMall': 'median', 'Spa': 'median', 'VRDeck': 'median',
+            'TotalSpend': 'median', 'PCT_RoomService': 'mean', 'PCT_FoodCourt': 'mean', 'PCT_ShoppingMall': 'mean',
+            'PCT_Spa': 'mean', 'PCT_VRDeck': 'mean'
+        }).rename(columns={
+            'PassengerNo': 'GroupCount',
+            'VIP': 'GroupCountVIP', 'CryoSleep': 'GroupCountCryoSleep', 'Cabin': 'GroupCountCabin',
+            'CabinDeck': 'GroupCountCabinDeck', 'CabinNum': 'GroupCountCabinNum', 'CabinSide': 'GroupCountCabinSide',
+            'Age': 'GroupMedianAge', 'HomePlanet': 'GroupMeanCountHomePlanet',
+            'Destination': 'GroupMeanCountDestination', 'RoomService': 'GroupMedianRoomService',
+            'FoodCourt': 'GroupMedianFoodCourt', 'ShoppingMall': 'GroupMedianShoppingMall', 'Spa': 'GroupMedianSpa',
+            'VRDeck': 'GroupMedianVRDeck', 'TotalSpend': 'GroupMedianTotalSpend',
+            'PCT_RoomService': 'GroupMeanPCT_RoomService', 'PCT_FoodCourt': 'GroupMeanPCT_FoodCourt',
+            'PCT_ShoppingMall': 'GroupMeanPCT_ShoppingMall', 'PCT_Spa': 'GroupMeanPCT_Spa',
+            'PCT_VRDeck': 'GroupMeanPCT_VRDeck'
+        }))
 
         if self.fill_group:
-            data = merge(data, group_data, on='PassengerGroup', how='left')
+            x = merge(x, self.__group_data, on='PassengerGroup', how='left')
 
-        data.drop(labels=['PassengerId', 'PassengerGroup', 'PassengerNo', 'Cabin', 'CabinNum', 'Name'], axis='columns',
-                  inplace=True)
-        return data
+        if self.one_hot_encoding:
+            for name in self.__ohe_encoder.keys():
+                self.__ohe_encoder[name].fit(x[[name]])
+                newfeatures = self.__ohe_encoder[name].get_feature_names_out()
+                x[newfeatures] = self.__ohe_encoder[name].transform(x[[name]]).toarray()
 
+        if self.scaling:
+            for name in self.__scaling_encoder.keys():
+                enc = self.__scaling_encoder[name]
+                x[[name]] = enc.fit_transform(x[[name]])
 
-# data = read_csv("../input/spaceship-titanic-train.csv")
-# data = data.sample(frac=1, random_state=SEED).reset_index(drop=True)
+        self.__drop_unused_features(x)
 
-'''
-spend_features = ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']
-with option_context('display.max_columns', 40):
-    print(data.loc[data['CryoSleep'] == True, spend_features].describe())
-'''
+        return x
 
-'''
-ages = data.groupby('HomePlanet', as_index=False)
-with option_context('display.max_columns', 40):
-    print(ages['Age'].describe())
-'''
+    def fit(self, x, y=None):
+        data = x
+        self.fit_transform(data, y)
+        return self
 
-#data = SpaceshipTitanicPreprocessing().fit_transform(data)
+    def transform(self, x, y=None):
+        x['CabinDeck'] = x['Cabin'].apply(lambda v: v.split('/')[0] if not isna(v) else nan)
+        x['CabinNum'] = x['Cabin'].apply(lambda v: v.split('/')[1] if not isna(v) else nan)
+        x['CabinSide'] = x['Cabin'].apply(lambda v: v.split('/')[2] == 'P' if not isna(v) else nan)
 
-'''
-with option_context('display.max_columns', 40):
-    print(data.describe(include='all'))
-    print(data.head(20))
+        if self.fill_missing:
+            x['CabinDeck'].fillna(self.__cabin_deck_mode, inplace=True)
+            x['HomePlanet'].fillna(self.__home_planet_mode, inplace=True)
+            x['Destination'].fillna(self.__destination_mode, inplace=True)
 
-print(data.isna().sum())
-print(data.dtypes)
-'''
+        x['HomePlanet'] = x['HomePlanet'].astype('category')
+        x['Destination'] = x['Destination'].astype('category')
 
-# sorted_mat = data.corr().unstack().sort_values()
+        x['CabinDeck'].replace({'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4, 'F': 5, 'G': 6, 'T': 7}, inplace=True)
 
-# print(sorted_mat[0:30])
+        bool_features = ['VIP', 'CryoSleep', 'CabinSide']
+        if self.fill_missing:
+            x[bool_features] = x[bool_features].fillna(self.__bool_features_mode_values)
+            x[bool_features] = x[bool_features].astype(bool)
 
-'''
-mean_spend = data.loc[data['CryoSleep'] == False, spend_features].mean()
+        spend_features = ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']
+        if self.fill_missing:
+            x[spend_features] = x[spend_features].fillna(self.__cryo_grouped_median)
 
-data['RoomService'].fillna(int(data['RoomService'].mean()), inplace=True)
-data['FoodCourt'].fillna(int(data['FoodCourt'].mean()), inplace=True)
-data['ShoppingMall'].fillna(int(data['ShoppingMall'].mean()), inplace=True)
-data['Spa'].fillna(int(data['Spa'].mean()), inplace=True)
-data['VRDeck'].fillna(int(data['VRDeck'].mean()), inplace=True)
-data['TotalSpend'] = data['RoomService'] + data['FoodCourt'] + data['ShoppingMall'] + data['Spa'] + data['VRDeck']
-'''
-# with option_context('display.max_columns', 40):
-#    print(data.loc[data['CryoSleep'] == False, spend_features].head(30))
+        x['TotalSpend'] = x['RoomService'] + x['FoodCourt'] + x['ShoppingMall'] + x['Spa'] + x['VRDeck']
 
-'''
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   '''
+        pct_spend_features = ['PCT_RoomService', 'PCT_FoodCourt', 'PCT_ShoppingMall', 'PCT_Spa', 'PCT_VRDeck']
+        x[pct_spend_features] = x[spend_features].apply(lambda v: v / x['TotalSpend'])
+        if self.fill_missing:
+            x[pct_spend_features] = x[pct_spend_features].fillna(0)  # clear pct/0
+
+        if self.fill_missing:
+            x['Age'] = x['Age'].fillna(self.__age_grouped_median)
+
+        # Instances in the same group must be similar
+        x['PassengerGroup'] = x['PassengerId'].apply(lambda v: v.split('_')[0])
+        x['PassengerNo'] = x['PassengerId'].apply(lambda v: v.split('_')[1])
+
+        if self.fill_group:
+            x = merge(x, self.__group_data, on='PassengerGroup', how='left')
+
+        if self.one_hot_encoding:
+            for name in self.__ohe_encoder:
+                newfeatures = self.__ohe_encoder[name].get_feature_names_out()
+                x[newfeatures] = self.__ohe_encoder[name].transform(x[[name]]).toarray()
+
+        if self.scaling:
+            for name in self.__scaling_encoder.keys():
+                enc = self.__scaling_encoder[name]
+                x[[name]] = enc.transform(x[[name]])
+
+        self.__drop_unused_features(x)
+
+        return x
