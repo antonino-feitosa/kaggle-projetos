@@ -1,11 +1,10 @@
 from lightgbm import LGBMClassifier
 from pandas import read_csv, DataFrame
-from scipy.stats import chi2
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier, GradientBoostingClassifier, \
     BaggingClassifier, AdaBoostClassifier, VotingClassifier, StackingClassifier
-from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif, VarianceThreshold, \
+from sklearn.feature_selection import SelectKBest, chi2, f_classif, mutual_info_classif, VarianceThreshold, \
     SequentialFeatureSelector, RFE
 from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import LocallyLinearEmbedding
@@ -22,14 +21,20 @@ from xgboost import XGBClassifier
 from src.SpaceshipTitanicData import SpaceshipTitanicPreprocessing
 
 PREPROCESSOR = SpaceshipTitanicPreprocessing(scaling=True, one_hot_encoding=True)
-PREPROCESSOR_GRID = {'preprocessing': PREPROCESSOR}
 ESTIMATOR = LGBMClassifier()
 FEATURE_SELECTOR = RFE(ESTIMATOR, n_features_to_select=20)
 FEATURE_SELECTOR_GRID = {'reduce_dim': ['passthrough']}
 NUM_FEATURES_TO_SELECT = [10, 20, 30]
 
+PREPROCESSOR_GRID = {
+    'preprocessing': [SpaceshipTitanicPreprocessing(scaling=True, one_hot_encoding=True, fill_missing=True)],
+    'preprocessing__fill_total_spend': [True, False],
+    'preprocessing__fill_percent_spend': [True, False],
+    'preprocessing__fill_group': [True, False],
+}
+
 param_grid_preprocessing = [{
-    'preprocessing': [SpaceshipTitanicPreprocessing()],
+    'preprocessing': [SpaceshipTitanicPreprocessing(scaling=True, one_hot_encoding=True)],
     'preprocessing__fill_missing': [True, False],
     'preprocessing__fill_total_spend': [True, False],
     'preprocessing__fill_percent_spend': [True, False],
@@ -38,10 +43,12 @@ param_grid_preprocessing = [{
     # 'preprocessing__one_hot_encoding':[True, False]
 }]
 
-param_grid_features = [{
-    'reduce_dim': ['passthrough'],
-    **PREPROCESSOR_GRID
-}, {
+param_grid_features = [
+#     {
+#     'reduce_dim': ['passthrough'],
+#     **PREPROCESSOR_GRID
+# },
+    {
     'reduce_dim': [SelectKBest()],
     'reduce_dim__k': NUM_FEATURES_TO_SELECT,
     'reduce_dim__score_func': [chi2, f_classif, mutual_info_classif],
@@ -212,16 +219,7 @@ param_grid_models = [{
 data = read_csv("../input/spaceship-titanic-train.csv")
 # data = data.sample(frac=1).reset_index(drop=True)
 
-PREPROCESSING = SpaceshipTitanicPreprocessing(
-    fill_missing=True,
-    fill_total_spend=True,  # +1 = 18
-    fill_percent_spend=True,  # +5 = 23
-    fill_group=True,  # +21 = 44
-    scaling=True,
-    one_hot_encoding=True  # 17 features
-)
-
-param_grid = param_grid_preprocessing
+param_grid = param_grid_features
 
 pipe = Pipeline([
     ('preprocessing', PREPROCESSOR),
@@ -242,6 +240,9 @@ print('Best parameter:', grid.best_params_)
 print('Best parameter score (CV score=%0.4f):' % grid.best_score_)
 
 model = grid.best_estimator_
+# FIX inverse transform to preprocessing
+X = data.drop(labels=['Transported'], axis='columns')
+Y = data['Transported']
 y_pred = cross_val_predict(model, X, Y, cv=10)
 
 print(confusion_matrix(Y, y_pred))

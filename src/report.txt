@@ -1,0 +1,31 @@
+
+param_grid_preprocessing = [{
+    'preprocessing': [SpaceshipTitanicPreprocessing(scaling=True, one_hot_encoding=True)],
+    'preprocessing__fill_missing': [True, False],
+    'preprocessing__fill_total_spend': [True, False],
+    'preprocessing__fill_percent_spend': [True, False],
+    'preprocessing__fill_group': [True, False],
+}]
+
+Best Estimator:  Pipeline(steps=[('preprocessing',
+                 SpaceshipTitanicPreprocessing(fill_group=False,
+                                               fill_missing=False)),
+                ('reduce_dim',
+                 RFE(estimator=LGBMClassifier(), n_features_to_select=20)),
+                ('classifier', LGBMClassifier())])
+Best parameter: {'preprocessing': SpaceshipTitanicPreprocessing(fill_group=False, fill_missing=False), 'preprocessing__fill_group': False, 'preprocessing__fill_missing': False, 'preprocessing__fill_percent_spend': True, 'preprocessing__fill_total_spend': True}
+Best parameter score (CV score=0.8047):
+[[3391  924]
+ [ 774 3604]]
+              precision    recall  f1-score   support
+
+       False       0.81      0.79      0.80      4315
+        True       0.80      0.82      0.81      4378
+
+    accuracy                           0.80      8693
+   macro avg       0.81      0.80      0.80      8693
+weighted avg       0.80      0.80      0.80      8693
+
+Accuracy: 80.47%
+
+Process finished with exit code 0

@@ -5,7 +5,7 @@ Created on 13 de mar. de 2022
 """
 
 from numpy import nan
-from pandas import DataFrame
+from pandas import DataFrame, read_csv
 from pandas.core.dtypes.missing import isna
 from pandas.core.reshape.merge import merge
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -62,7 +62,6 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
             x.drop(labels=['HomePlanet', 'Destination'], axis='columns', inplace=True)
 
     def fit_transform(self, x, y=None, **fit_params):
-        print('FIT_TRANS:', x.columns)
         x['CabinDeck'] = x['Cabin'].apply(lambda v: v.split('/')[0] if not isna(v) else nan)
         x['CabinNum'] = x['Cabin'].apply(lambda v: v.split('/')[1] if not isna(v) else nan)
         x['CabinSide'] = x['Cabin'].apply(lambda v: v.split('/')[2] == 'P' if not isna(v) else nan)
@@ -85,11 +84,13 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
         if self.fill_missing:
             self.__bool_features_mode_values = x[bool_features].mode(axis='columns')
             x[bool_features] = x[bool_features].fillna(self.__bool_features_mode_values)
-            x[bool_features] = x[bool_features].astype(bool)
+        x[bool_features] = x[bool_features].astype(bool)
 
         spend_features = ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']
         if self.fill_missing:
+            # FIX median by group
             self.__cryo_grouped_median = x.groupby('CryoSleep')[spend_features].transform('median')
+            print('MEDIAN', self.__cryo_grouped_median)
             x[spend_features] = x[spend_features].fillna(self.__cryo_grouped_median)
 
         x['TotalSpend'] = x['RoomService'] + x['FoodCourt'] + x['ShoppingMall'] + x['Spa'] + x['VRDeck']
@@ -153,22 +154,21 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
 
         self.__drop_unused_features(x)
 
+        print('FIT TRANSFORM---------------------')
         return x
 
     def fit(self, x, y=None):
-        print('FIT:', x.columns)
-        data = x
-        self.fit_transform(data, y)
+        self.fit_transform(x.copy(), y)
         return self
 
     def transform(self, x, y=None):
-        print('TRANS:', x.columns)
-
+        print('Start Transform')
         x['CabinDeck'] = x['Cabin'].apply(lambda v: v.split('/')[0] if not isna(v) else nan)
         x['CabinNum'] = x['Cabin'].apply(lambda v: v.split('/')[1] if not isna(v) else nan)
         x['CabinSide'] = x['Cabin'].apply(lambda v: v.split('/')[2] == 'P' if not isna(v) else nan)
 
         if self.fill_missing:
+            print('Fill Boolean')
             x['CabinDeck'].fillna(self.__cabin_deck_mode, inplace=True)
             x['HomePlanet'].fillna(self.__home_planet_mode, inplace=True)
             x['Destination'].fillna(self.__destination_mode, inplace=True)
@@ -181,7 +181,7 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
         bool_features = ['VIP', 'CryoSleep', 'CabinSide']
         if self.fill_missing:
             x[bool_features] = x[bool_features].fillna(self.__bool_features_mode_values)
-            x[bool_features] = x[bool_features].astype(bool)
+        x[bool_features] = x[bool_features].astype(bool)
 
         spend_features = ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']
         if self.fill_missing:
@@ -203,16 +203,6 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
 
         if self.fill_group:
             x = merge(x, self.__group_data, on='PassengerGroup', how='left')
-            self.__scaling_encoder.update({
-                'GroupCount': MinMaxScaler(), 'GroupCountVIP': MinMaxScaler(), 'GroupCountCryoSleep': MinMaxScaler(),
-                'GroupCountCabin': MinMaxScaler(), 'GroupCountCabinDeck': MinMaxScaler(),
-                'GroupCountCabinNum': MinMaxScaler(), 'GroupCountCabinSide': MinMaxScaler(),
-                'GroupMedianAge': MinMaxScaler(), 'GroupMeanCountHomePlanet': MinMaxScaler(),
-                'GroupMeanCountDestination': MinMaxScaler(), 'GroupMedianRoomService': MinMaxScaler(),
-                'GroupMedianFoodCourt': MinMaxScaler(), 'GroupMedianShoppingMall': MinMaxScaler(),
-                'GroupMedianSpa': MinMaxScaler(), 'GroupMedianVRDeck': MinMaxScaler(),
-                'GroupMedianTotalSpend': MinMaxScaler()
-            })
 
         if self.one_hot_encoding:
             for name in self.__ohe_encoder:
@@ -226,4 +216,26 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
 
         self.__drop_unused_features(x)
 
+        print('Fill Na:', self.fill_missing)
+        print(x.isna().sum())
         return x
+
+'''
+data = read_csv("../input/spaceship-titanic-train.csv")
+X = data.drop(labels=['Transported'], axis='columns')
+Y = data['Transported']
+
+PREPROCESSING = SpaceshipTitanicPreprocessing(
+    fill_missing=True,
+    fill_total_spend=False,  # +1 = 18
+    fill_percent_spend=True,  # +5 = 23
+    fill_group=False,  # +21 = 44
+    scaling=True,
+    one_hot_encoding=True  # 17 features
+)
+
+#X = PREPROCESSING.fit(X).transform(X)
+X = PREPROCESSING.fit_transform(X)
+
+print(X.isna().sum())
+'''
