@@ -41,17 +41,6 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
             'FoodCourt': MinMaxScaler(), 'ShoppingMall': MinMaxScaler(), 'Spa': MinMaxScaler(),
             'VRDeck': MinMaxScaler(), 'TotalSpend': MinMaxScaler()
         }
-        if self.fill_group:
-            self.__scaling_encoder.update({
-                'GroupCount': MinMaxScaler(), 'GroupCountVIP': MinMaxScaler(), 'GroupCountCryoSleep': MinMaxScaler(),
-                'GroupCountCabin': MinMaxScaler(), 'GroupCountCabinDeck': MinMaxScaler(),
-                'GroupCountCabinNum': MinMaxScaler(), 'GroupCountCabinSide': MinMaxScaler(),
-                'GroupMedianAge': MinMaxScaler(), 'GroupMeanCountHomePlanet': MinMaxScaler(),
-                'GroupMeanCountDestination': MinMaxScaler(), 'GroupMedianRoomService': MinMaxScaler(),
-                'GroupMedianFoodCourt': MinMaxScaler(), 'GroupMedianShoppingMall': MinMaxScaler(),
-                'GroupMedianSpa': MinMaxScaler(), 'GroupMedianVRDeck': MinMaxScaler(),
-                'GroupMedianTotalSpend': MinMaxScaler()
-            })
 
     def __drop_unused_features(self, x: DataFrame):
         x.drop(labels=['PassengerId', 'PassengerGroup', 'PassengerNo', 'Cabin', 'CabinNum', 'Name'], axis='columns',
@@ -73,6 +62,7 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
             x.drop(labels=['HomePlanet', 'Destination'], axis='columns', inplace=True)
 
     def fit_transform(self, x, y=None, **fit_params):
+        print('FIT_TRANS:', x.columns)
         x['CabinDeck'] = x['Cabin'].apply(lambda v: v.split('/')[0] if not isna(v) else nan)
         x['CabinNum'] = x['Cabin'].apply(lambda v: v.split('/')[1] if not isna(v) else nan)
         x['CabinSide'] = x['Cabin'].apply(lambda v: v.split('/')[2] == 'P' if not isna(v) else nan)
@@ -139,6 +129,16 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
 
         if self.fill_group:
             x = merge(x, self.__group_data, on='PassengerGroup', how='left')
+            self.__scaling_encoder.update({
+                'GroupCount': MinMaxScaler(), 'GroupCountVIP': MinMaxScaler(), 'GroupCountCryoSleep': MinMaxScaler(),
+                'GroupCountCabin': MinMaxScaler(), 'GroupCountCabinDeck': MinMaxScaler(),
+                'GroupCountCabinNum': MinMaxScaler(), 'GroupCountCabinSide': MinMaxScaler(),
+                'GroupMedianAge': MinMaxScaler(), 'GroupMeanCountHomePlanet': MinMaxScaler(),
+                'GroupMeanCountDestination': MinMaxScaler(), 'GroupMedianRoomService': MinMaxScaler(),
+                'GroupMedianFoodCourt': MinMaxScaler(), 'GroupMedianShoppingMall': MinMaxScaler(),
+                'GroupMedianSpa': MinMaxScaler(), 'GroupMedianVRDeck': MinMaxScaler(),
+                'GroupMedianTotalSpend': MinMaxScaler()
+            })
 
         if self.one_hot_encoding:
             for name in self.__ohe_encoder.keys():
@@ -156,11 +156,14 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
         return x
 
     def fit(self, x, y=None):
+        print('FIT:', x.columns)
         data = x
         self.fit_transform(data, y)
         return self
 
     def transform(self, x, y=None):
+        print('TRANS:', x.columns)
+
         x['CabinDeck'] = x['Cabin'].apply(lambda v: v.split('/')[0] if not isna(v) else nan)
         x['CabinNum'] = x['Cabin'].apply(lambda v: v.split('/')[1] if not isna(v) else nan)
         x['CabinSide'] = x['Cabin'].apply(lambda v: v.split('/')[2] == 'P' if not isna(v) else nan)
@@ -200,6 +203,16 @@ class SpaceshipTitanicPreprocessing(BaseEstimator, TransformerMixin):
 
         if self.fill_group:
             x = merge(x, self.__group_data, on='PassengerGroup', how='left')
+            self.__scaling_encoder.update({
+                'GroupCount': MinMaxScaler(), 'GroupCountVIP': MinMaxScaler(), 'GroupCountCryoSleep': MinMaxScaler(),
+                'GroupCountCabin': MinMaxScaler(), 'GroupCountCabinDeck': MinMaxScaler(),
+                'GroupCountCabinNum': MinMaxScaler(), 'GroupCountCabinSide': MinMaxScaler(),
+                'GroupMedianAge': MinMaxScaler(), 'GroupMeanCountHomePlanet': MinMaxScaler(),
+                'GroupMeanCountDestination': MinMaxScaler(), 'GroupMedianRoomService': MinMaxScaler(),
+                'GroupMedianFoodCourt': MinMaxScaler(), 'GroupMedianShoppingMall': MinMaxScaler(),
+                'GroupMedianSpa': MinMaxScaler(), 'GroupMedianVRDeck': MinMaxScaler(),
+                'GroupMedianTotalSpend': MinMaxScaler()
+            })
 
         if self.one_hot_encoding:
             for name in self.__ohe_encoder:
